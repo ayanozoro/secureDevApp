@@ -1,0 +1,28 @@
+{
+  "name": "securedevops-unified-backend",
+  "version": "1.0.0",
+  "description": "Unified SecureDevOps & VulnWatch Backend with GitHub OAuth, Webhook Automation, and OSV Scanner",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "github",
+    "oauth",
+    "webhook",
+    "osv",
+    "vulnerability",
+    "scanner",
+    "securedevops"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "nodemailer": "^10.6.0",
+    "smee-client": "^2.0.4"
+  }
+}
