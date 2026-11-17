@@ -93,15 +93,23 @@ async function handleIncomingWebhook(req, res) {
     time: new Date().toISOString(),
   });
 
+  // Resolve persisted repo owner (userLogin, userEmail, token) from MongoDB
+  const repoBinding =
+    meta.repoName && meta.repoName.includes('/')
+      ? await store.getRepoBinding(meta.repoName)
+      : null;
+  meta.userLogin = (repoBinding && repoBinding.userLogin) || store.userLogin || null;
+
   // 1. Handle Ping event
   if (event === 'ping') {
     store.logActivity('ping', `GitHub Ping event received for repo: ${meta.repoName}`, {
       zen: payload.zen,
       hook_id: payload.hook_id,
-    });
+    }, meta.userLogin);
 
     const pingRecord = {
       id: deliveryId || `ping-${Date.now()}`,
+      userLogin: meta.userLogin,
       event: 'ping',
       repository: meta.repoName,
       ref: null,
@@ -130,11 +138,17 @@ async function handleIncomingWebhook(req, res) {
         store.logActivity(
           'info',
           `Running automatic baseline scan for newly connected repo: ${meta.repoName} (${meta.branch})...`,
+          {},
+          meta.userLogin,
         );
-        const token = store.resolveGitHubToken(req) || store.getRepoToken(meta.repoName);
+        const token =
+          store.resolveGitHubToken(req) ||
+          (repoBinding && repoBinding.token) ||
+          store.getRepoToken(meta.repoName);
         const packageJson = await fetchPackageJson(meta.repoName, meta.branch, token);
         meta.packagePath = packageJson._detectedPath || 'package.json';
         meta.recipientEmail =
+          (repoBinding && repoBinding.userEmail) ||
           store.getRepoOwnerEmail(meta.repoName) ||
           (await resolveLoggedInUserEmail(token, store)) ||
           undefined;
@@ -143,7 +157,7 @@ async function handleIncomingWebhook(req, res) {
         store.logActivity('warn', `Baseline scan note for ${meta.repoName}: ${err.message}`, {
           meta,
           error: err.message,
-        });
+        }, meta.userLogin);
       }
     }
     return;
@@ -156,6 +170,8 @@ async function handleIncomingWebhook(req, res) {
       store.logActivity(
         'info',
         `Skipping automated scan for internal SecureDevOps fix branch "${meta.branch}" on ${meta.repoName}.`,
+        {},
+        meta.userLogin,
       );
       return res.json({
         message: `Skipped internal fix branch ${meta.branch}`,
@@ -171,6 +187,7 @@ async function handleIncomingWebhook(req, res) {
         meta.authorName || 'committer'
       }. Rerunning vulnerability scan...`,
       meta,
+      meta.userLogin,
     );
 
     // Respond immediately to GitHub (timeout requirement)
@@ -187,25 +204,33 @@ async function handleIncomingWebhook(req, res) {
       store.logActivity(
         'info',
         `Automated scan starting: Searching for package.json in ${meta.repoName} (${meta.branch})...`,
+        {},
+        meta.userLogin,
       );
       const hintPath = findModifiedPackageJsonPath(payload);
-      const token = store.resolveGitHubToken(req) || store.getRepoToken(meta.repoName);
+      const token =
+        store.resolveGitHubToken(req) ||
+        (repoBinding && repoBinding.token) ||
+        store.getRepoToken(meta.repoName);
       const packageJson = await fetchPackageJson(meta.repoName, meta.branch, token, hintPath);
       meta.packagePath = packageJson._detectedPath || 'package.json';
       meta.recipientEmail =
+        (repoBinding && repoBinding.userEmail) ||
         store.getRepoOwnerEmail(meta.repoName) ||
         (await resolveLoggedInUserEmail(token, store)) ||
         undefined;
       store.logActivity(
         'info',
         `Found package file at "${meta.packagePath}". Running OSV scan...`,
+        {},
+        meta.userLogin,
       );
       await executeScan(meta, packageJson, { githubToken: token });
     } catch (err) {
       store.logActivity('error', `Automated scan failed for ${meta.repoName}: ${err.message}`, {
         meta,
         error: err.message,
-      });
+      }, meta.userLogin);
     }
     return;
   }
@@ -230,11 +255,15 @@ router.get('/api/webhooks/info', (req, res) => {
   });
 });
 
-// 3. Backend B: GET /api/webhooks/activity
-router.get('/api/webhooks/activity', (req, res) => {
-  res.json({
-    activity: store.recentActivity,
-  });
+// 3. Backend B: GET /api/webhooks/activity (persisted in MongoDB per logged-in user)
+router.get('/api/webhooks/activity', async (req, res) => {
+  try {
+    const { login } = await store.resolveRequestUser(req);
+    const activity = await store.getActivities(login);
+    res.json({ activity });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 4. Backend B: POST /api/webhooks/test-fetch
@@ -245,17 +274,22 @@ router.post('/api/webhooks/test-fetch', async (req, res) => {
   }
 
   const repoFullName = `${owner.trim()}/${repo.trim()}`;
-  const token = store.resolveGitHubToken(req);
+  const reqUser = await store.resolveRequestUser(req);
+  const token = reqUser.token;
 
   try {
-    if (token) store.setRepoToken(repoFullName, token);
-    const recipientEmail = await resolveLoggedInUserEmail(token, store);
-    if (recipientEmail) {
-      store.setRepoOwnerEmail(repoFullName, recipientEmail);
-    }
+    const recipientEmail = (await resolveLoggedInUserEmail(token, store)) || reqUser.email;
+    const userLogin = reqUser.login || store.userLogin || null;
+    await store.saveRepoBinding(repoFullName, {
+      userLogin,
+      userEmail: recipientEmail,
+      defaultBranch: ref,
+      token,
+    });
     const packageJson = await fetchPackageJson(repoFullName, ref, token);
     const meta = {
       event: 'manual_scan',
+      userLogin,
       repoName: repoFullName,
       branch: ref,
       commitSha: 'HEAD',
@@ -323,10 +357,12 @@ router.post('/api/webhooks/simulate', async (req, res) => {
 
   const deliveryId = 'sim_' + Date.now();
   const repoFullName = `${owner.trim()}/${repo.trim()}`;
+  const reqUser = await store.resolveRequestUser(req);
 
   if (event === 'ping') {
     const pingRecord = {
       id: deliveryId,
+      userLogin: reqUser.login || store.userLogin || null,
       event: 'ping',
       repository: repoFullName,
       ref: null,
@@ -379,6 +415,7 @@ router.post('/api/webhooks/simulate', async (req, res) => {
 
     const meta = {
       event: 'push',
+      userLogin: reqUser.login || store.userLogin || null,
       repoName: repoFullName,
       branch: ref,
       commitSha: 'sim' + Math.random().toString(16).substring(2, 8),

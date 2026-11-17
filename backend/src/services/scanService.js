@@ -50,6 +50,7 @@ async function executeScan(meta, packageJson, options = {}) {
     // Prepare Backend B push record
     const pushRecord = {
       id: meta.deliveryId || `push-${Date.now()}`,
+      userLogin: meta.userLogin || store.userLogin || null,
       event: 'push',
       repository: meta.repoName,
       commitSha: (meta.commitSha || 'head').substring(0, 7),
@@ -105,21 +106,41 @@ async function executeScan(meta, packageJson, options = {}) {
     });
 
     // Send scan completion email report to logged-in GitHub user (non-blocking)
-    sendScanCompleteEmail(fullRecord).catch((mailErr) => {
-      console.error('[ScanService] Unexpected email error:', mailErr.message);
-    });
+    sendScanCompleteEmail(fullRecord)
+      .then((res) => {
+        if (res && res.sent && res.to) {
+          void store.updateScanRecord(scanId, { emailSentTo: res.to });
+        }
+      })
+      .catch((mailErr) => {
+        console.error('[ScanService] Unexpected email error:', mailErr.message);
+      });
 
     // Post Commit/PR Comment + Sync GitHub Security Alert Issue on the repository (non-blocking)
     if (!options.skipGitHubPost) {
-      postScanReportToGitHub(fullRecord, options.githubToken || null).catch((ghErr) => {
-        console.error('[ScanService] Unexpected GitHub report error:', ghErr.message);
-      });
+      postScanReportToGitHub(fullRecord, options.githubToken || null)
+        .then((res) => {
+          if (res && res.posted) {
+            void store.updateScanRecord(scanId, {
+              githubReport: { comment: res.comment, issue: res.issue },
+            });
+          }
+        })
+        .catch((ghErr) => {
+          console.error('[ScanService] Unexpected GitHub report error:', ghErr.message);
+        });
 
       // Automatically generate/update a Security Fix PR upgrading vulnerable packages
       if (fullRecord.vulnerableCount > 0) {
-        createSecurityFixPR(fullRecord, options.githubToken || null).catch((prErr) => {
-          console.error('[ScanService] Unexpected Auto-Fix PR error:', prErr.message);
-        });
+        createSecurityFixPR(fullRecord, options.githubToken || null)
+          .then((res) => {
+            if (res && res.created) {
+              void store.updateScanRecord(scanId, { fixPr: res });
+            }
+          })
+          .catch((prErr) => {
+            console.error('[ScanService] Unexpected Auto-Fix PR error:', prErr.message);
+          });
       }
     }
 

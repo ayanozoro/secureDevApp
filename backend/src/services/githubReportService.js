@@ -101,6 +101,8 @@ async function resolveRepoWriteToken(scanRecord, tokenOverride = null) {
   if (scanRecord && scanRecord.repoName) {
     const repoToken = store.getRepoToken(scanRecord.repoName);
     if (repoToken) return repoToken;
+    const binding = await store.getRepoBinding(scanRecord.repoName);
+    if (binding && binding.token) return binding.token;
   }
   if (store.inMemoryUserToken) return store.inMemoryUserToken;
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;

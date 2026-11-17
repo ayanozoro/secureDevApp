@@ -18,6 +18,7 @@ if (fs.existsSync(envPath)) {
 
 const express = require('express');
 const cors = require('cors');
+const { connectDB, getDbStatus } = require('./db/connection');
 const store = require('./services/store');
 const SmeeListener = require('./services/smeeClient');
 const { isEmailConfigured } = require('./services/emailService');
@@ -75,8 +76,17 @@ app.get('/', (req, res) => {
     service: 'SecureDevOps Unified Backend',
     ports: { primary: PORT, vulnwatch: VULNWATCH_PORT },
     smeeConnected: store.smeeStatus.connected,
+    database: getDbStatus(),
     uptime: process.uptime(),
   });
+});
+
+// Connect to MongoDB (non-blocking startup so server comes up immediately)
+connectDB().then((ok) => {
+  const db = getDbStatus();
+  console.log(
+    `  MongoDB:          ${ok ? `Connected (${db.dbName})` : `Offline (${db.error || 'in-memory fallback'})`}`,
+  );
 });
 
 // Start Primary Server (PORT 4000)

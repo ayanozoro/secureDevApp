@@ -80,11 +80,16 @@ router.post('/api/repos/setup-webhook', async (req, res) => {
     store.logActivity('info', `Attempting automated webhook installation on ${repo}...`);
     const result = await createRepoWebhook(repo, token, smeeUrl, secret);
 
-    store.setRepoToken(repo, token);
-    const ownerEmail = await resolveLoggedInUserEmail(token, store);
-    if (ownerEmail) {
-      store.setRepoOwnerEmail(repo, ownerEmail);
-    }
+    const reqUser = await store.resolveRequestUser(req);
+    const ownerEmail = (await resolveLoggedInUserEmail(token, store)) || reqUser.email;
+    const ownerLogin = reqUser.login || store.userLogin;
+    await store.saveRepoBinding(repo, {
+      userLogin: ownerLogin,
+      userEmail: ownerEmail,
+      hookId: result.hookId,
+      webhookActive: true,
+      token,
+    });
 
     store.setLastKnownRepo(repo);
     store.logActivity(
@@ -96,6 +101,7 @@ router.post('/api/repos/setup-webhook', async (req, res) => {
         smeeUrl,
         ownerEmail: ownerEmail || undefined,
       },
+      ownerLogin,
     );
 
     res.json({
@@ -132,6 +138,7 @@ router.delete('/api/repos/webhook', async (req, res) => {
 
   try {
     await deleteRepoWebhook(repo, hookId, token);
+    await store.removeRepoWebhook(repo);
     store.logActivity('info', `Webhook (ID: ${hookId}) deleted from ${repo}`);
     res.json({ success: true, message: `Webhook removed from ${repo}` });
   } catch (err) {

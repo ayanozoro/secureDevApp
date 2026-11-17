@@ -74,21 +74,25 @@ router.get('/auth/github/callback', async (req, res) => {
       `gh_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
     );
 
-    // Fetch user details & primary email for scan notifications
+    // Fetch user details & primary email for scan notifications and persist in MongoDB
     try {
       const user = await getAuthenticatedUser(token);
       const email = await getAuthenticatedUserEmail(token, user);
-      store.setAuthenticatedUser(token, { login: user.login, email });
+      await store.upsertUser(token, user, email);
 
       if (email) {
         store.logActivity(
           'info',
           `GitHub authorization successful! Logged in as @${user.login} (${email}) — scan reports will be emailed here.`,
+          {},
+          user.login,
         );
       } else {
         store.logActivity(
           'warn',
           `Logged in as @${user.login}, but GitHub did not return an email address. Enable "Email addresses: Read-only" in GitHub App permissions so scan reports can be emailed to you.`,
+          {},
+          user.login,
         );
       }
     } catch (e) {
@@ -128,11 +132,11 @@ router.get('/api/auth/status', async (req, res) => {
   try {
     const user = await getAuthenticatedUser(token);
     const cached = store.getCachedUserForToken(token);
-    let email = cached && cached.login === user.login ? cached.email : null;
+    let email = cached && cached.login === user.login.toLowerCase() ? cached.email : null;
     if (!email) {
       email = await getAuthenticatedUserEmail(token, user);
     }
-    store.setAuthenticatedUser(token, { login: user.login, email });
+    await store.upsertUser(token, user, email);
 
     return res.json({
       authenticated: true,
@@ -173,7 +177,7 @@ router.post('/api/auth/token', async (req, res) => {
     const user = await getAuthenticatedUser(cleanToken);
     store.setUserToken(cleanToken);
     const email = await getAuthenticatedUserEmail(cleanToken, user);
-    store.setAuthenticatedUser(cleanToken, { login: user.login, email });
+    await store.upsertUser(cleanToken, user, email);
 
     res.setHeader(
       'Set-Cookie',
