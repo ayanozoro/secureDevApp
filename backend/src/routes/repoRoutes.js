@@ -38,7 +38,7 @@ router.get('/api/user/repos', async (req, res) => {
 router.get('/api/repos/check-webhook', async (req, res) => {
   const token = store.resolveGitHubToken(req);
   const repo = req.query.repo;
-  const smeeUrl = process.env.SMEE_URL || '';
+  const smeeUrl = (process.env.WEBHOOK_PUBLIC_URL || process.env.SMEE_URL || '').trim();
 
   if (!repo) {
     return res.status(400).json({ error: 'Repository name required (?repo=owner/repo)' });
@@ -63,7 +63,7 @@ router.get('/api/repos/check-webhook', async (req, res) => {
 router.post('/api/repos/setup-webhook', async (req, res) => {
   const token = store.resolveGitHubToken(req);
   const { repo } = req.body;
-  const smeeUrl = process.env.SMEE_URL || '';
+  const smeeUrl = (process.env.WEBHOOK_PUBLIC_URL || process.env.SMEE_URL || '').trim();
   const secret = process.env.GITHUB_WEBHOOK_SECRET || '';
 
   if (!repo || !repo.includes('/')) {

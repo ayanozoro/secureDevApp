@@ -248,7 +248,7 @@ router.get('/api/webhooks/info', (req, res) => {
   const port = process.env.PORT || 4000;
   res.json({
     localWebhookUrl: `http://localhost:${port}/api/webhooks/github`,
-    smeeUrl: process.env.SMEE_URL || '',
+    smeeUrl: (process.env.WEBHOOK_PUBLIC_URL || process.env.SMEE_URL || '').trim(),
     hasWebhookSecret: Boolean(process.env.GITHUB_WEBHOOK_SECRET),
     supportedEvents: ['push', 'ping', 'pull_request'],
     recentDeliveriesCount: store.recentActivity.length,

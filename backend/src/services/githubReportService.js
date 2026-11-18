@@ -37,16 +37,26 @@ function ghHeaders(token) {
  */
 function generateGitHubAppJwt() {
   const appId = (process.env.GITHUB_APP_ID || '').trim();
+  if (!appId) return null;
+
+  let privateKey = null;
+  const envKeyContent = (process.env.GITHUB_APP_PRIVATE_KEY_CONTENT || '').trim();
   const keyPathSetting = (process.env.GITHUB_APP_PRIVATE_KEY_PATH || process.env.GITHUB_APP_PRIVATE_KEY || './github-key.pem').trim();
-  if (!appId || !keyPathSetting) return null;
 
-  const resolvedPath = path.isAbsolute(keyPathSetting)
-    ? keyPathSetting
-    : path.join(__dirname, '..', '..', keyPathSetting);
+  if (envKeyContent) {
+    privateKey = envKeyContent.replace(/\\n/g, '\n');
+  } else if (keyPathSetting.includes('-----BEGIN')) {
+    privateKey = keyPathSetting.replace(/\\n/g, '\n');
+  } else if (keyPathSetting) {
+    const resolvedPath = path.isAbsolute(keyPathSetting)
+      ? keyPathSetting
+      : path.join(__dirname, '..', '..', keyPathSetting);
+    if (fs.existsSync(resolvedPath)) {
+      privateKey = fs.readFileSync(resolvedPath, 'utf8');
+    }
+  }
 
-  if (!fs.existsSync(resolvedPath)) return null;
-
-  const privateKey = fs.readFileSync(resolvedPath, 'utf8');
+  if (!privateKey) return null;
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(

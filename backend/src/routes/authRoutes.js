@@ -11,6 +11,14 @@ const {
   getAuthenticatedUserEmail,
 } = require('../services/githubService');
 
+function getFrontendBase(req) {
+  const configured = (process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
+  if (configured) return configured;
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  return `${protocol}://${host}`;
+}
+
 /**
  * 1. Initiate GitHub OAuth Flow
  * GET /auth/github
@@ -21,9 +29,8 @@ router.get('/auth/github', (req, res) => {
     return res.status(500).send('GITHUB_CLIENT_ID is not configured in .env');
   }
 
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const redirectUri = `${protocol}://${host}/auth/github/callback`;
+  const targetBase = getFrontendBase(req);
+  const redirectUri = `${targetBase}/auth/github/callback`;
   const scopes = 'repo,admin:repo_hook,read:user,user:email';
 
   const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
@@ -40,9 +47,7 @@ router.get('/auth/github', (req, res) => {
  */
 router.get('/auth/github/callback', async (req, res) => {
   const { code, error, error_description } = req.query;
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const targetBase = `${protocol}://${host}`;
+  const targetBase = getFrontendBase(req);
 
   if (error) {
     store.logActivity(
