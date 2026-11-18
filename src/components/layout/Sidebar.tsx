@@ -21,7 +21,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const live = state.conn.streamA || state.conn.streamB;
 
   const items = [
-    { href: '/', label: 'Dashboard', icon: LayoutDashboard, active: pathname === '/' },
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, active: pathname === '/dashboard' },
     {
       href: scansHref,
       label: 'Scans',

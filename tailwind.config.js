@@ -41,6 +41,7 @@ module.exports = {
         headline: ['"Space Grotesk Variable"', 'Space Grotesk', 'system-ui', 'sans-serif'],
         sans: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono Variable"', 'JetBrains Mono', 'ui-monospace', 'monospace'],
+        hand: ['"Caveat Variable"', 'Caveat', 'cursive'],
       },
       fontSize: {
         'display-lg': ['48px', { lineHeight: '56px', letterSpacing: '-0.03em', fontWeight: '700' }],

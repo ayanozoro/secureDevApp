@@ -1,6 +1,7 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/space-grotesk';
 @import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource-variable/caveat';
 
 @tailwind base;
 @tailwind components;
@@ -8,6 +9,7 @@
 
 :root { color-scheme: dark; }
 
+html { scroll-behavior: smooth; }
 html, body { margin: 0; padding: 0; }
 
 body {
